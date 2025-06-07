@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameHub - Snake</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #1a202c; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; }
+        /* Added a border and a subtle box shadow to the canvas */
+        canvas { 
+            background-color: #000; 
+            border-radius: 0.5rem; 
+            border: 2px solid #4a5568;
+            box-shadow: 0 0 15px rgba(74, 85, 104, 0.4);
+        }
+    </style>
+</head>
+<body class="antialiased hidden">
+
+    <div class="text-center">
+        <h1 class="text-4xl font-bold mb-2">Snake</h1>
+        <p class="text-lg text-gray-400 mb-4">Use the Arrow Keys to move the snake.</p>
+        <div id="score-area" class="text-2xl font-bold mb-4">Score: 0</div>
+        
+        <canvas id="game-canvas" width="400" height="400"></canvas>
+
+        <div class="mt-8">
+            <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Back to Menu</a>
+        </div>
+    </div>
+    
+    <!-- Result Modal -->
+    <div id="result-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center">
+        <div class="bg-gray-800 p-8 rounded-lg text-center">
+            <h2 id="result-message" class="text-3xl font-bold mb-6"></h2>
+            <div class="flex justify-center space-x-4">
+                <button id="restart-game" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg">Play Again</button>
+                <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg">Main Menu</a>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const SUPABASE_URL = 'your_supabase_url_here'; // Replace with your Supabase URL
+        const SUPABASE_ANON_KEY = 'your_supabase_anon_key_here'; // Replace with your Supabase Anon Key
+
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        let currentUser = null;
+
+        // --- AUTHENTICATION CHECK ---
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (!session) {
+            window.location.href = '../login.html';
+        } else {
+            currentUser = session.user;
+            document.body.classList.remove('hidden');
+        }
+
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreArea = document.getElementById('score-area');
+        const resultModal = document.getElementById('result-modal');
+        const resultMessage = document.getElementById('result-message');
+        const restartGameBtn = document.getElementById('restart-game');
+
+        const box = 20;
+        let snake;
+        let food;
+        let score;
+        let d; // direction
+        let game;
+
+        function initGame() {
+            snake = [{ x: 9 * box, y: 10 * box }];
+            food = { x: Math.floor(Math.random() * 20) * box, y: Math.floor(Math.random() * 20) * box };
+            score = 0;
+            d = null;
+            scoreArea.textContent = `Score: 0`;
+            resultModal.classList.add('hidden');
+            game = setInterval(draw, 100);
+        }
+
+        document.addEventListener('keydown', direction);
+
+        function direction(event) {
+            if(event.keyCode == 37 && d != 'RIGHT') d = 'LEFT';
+            else if(event.keyCode == 38 && d != 'DOWN') d = 'UP';
+            else if(event.keyCode == 39 && d != 'LEFT') d = 'RIGHT';
+            else if(event.keyCode == 40 && d != 'UP') d = 'DOWN';
+        }
+        
+        function collision(head, array){
+            for(let i = 0; i < array.length; i++){
+                if(head.x == array[i].x && head.y == array[i].y){
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        async function saveScore(gameId, newScore) {
+            if (!currentUser || !newScore || newScore <= 0) return;
+
+            const { data: existingScore, error: fetchError } = await _supabase
+                .from('scores')
+                .select('score')
+                .eq('user_id', currentUser.id)
+                .eq('game_id', gameId)
+                .single();
+
+            if (fetchError && fetchError.code !== 'PGRST116') {
+                console.error('Error fetching score:', fetchError);
+                return;
+            }
+
+            const currentHighScore = existingScore ? existingScore.score : 0;
+
+            if (newScore > currentHighScore) {
+                const { error: upsertError } = await _supabase
+                    .from('scores')
+                    .upsert({ user_id: currentUser.id, game_id: gameId, score: newScore }, { onConflict: 'user_id,game_id' });
+
+                if (upsertError) console.error("Error saving score:", upsertError);
+                else console.log("New high score saved successfully!");
+            }
+        }
+
+        function draw(){
+            ctx.fillStyle = "#1a202c";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            for(let i = 0; i < snake.length; i++){
+                ctx.fillStyle = (i == 0) ? '#48bb78' : '#a0aec0';
+                ctx.fillRect(snake[i].x, snake[i].y, box, box);
+                ctx.strokeStyle = "#1a202c";
+                ctx.strokeRect(snake[i].x, snake[i].y, box, box);
+            }
+            
+            ctx.fillStyle = '#f56565';
+            ctx.fillRect(food.x, food.y, box, box);
+            
+            let snakeX = snake[0].x;
+            let snakeY = snake[0].y;
+            
+            if(d == "LEFT") snakeX -= box;
+            if(d == "UP") snakeY -= box;
+            if(d == "RIGHT") snakeX += box;
+            if(d == "DOWN") snakeY += box;
+            
+            if(snakeX == food.x && snakeY == food.y){
+                score++;
+                food = { x: Math.floor(Math.random() * 20) * box, y: Math.floor(Math.random() * 20) * box };
+            } else {
+                snake.pop();
+            }
+            
+            let newHead = { x: snakeX, y: snakeY };
+            
+            if(snakeX < 0 || snakeX >= canvas.width || snakeY < 0 || snakeY >= canvas.height || collision(newHead, snake)){
+                clearInterval(game);
+                saveScore('snake', score);
+                resultMessage.innerHTML = `Game Over!<br>Final Score: ${score}`;
+                resultModal.classList.remove('hidden');
+            }
+            
+            snake.unshift(newHead);
+            scoreArea.textContent = `Score: ${score}`;
+        }
+        
+        restartGameBtn.addEventListener('click', initGame);
+
+        // Start the first game
+        initGame();
+    </script>
+</body>
+</html>

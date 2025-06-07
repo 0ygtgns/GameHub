@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameHub - Tic Tac Toe</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #1a202c; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; }
+        .tic-tac-toe-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; width: 300px; height: 300px; margin: 1rem auto; }
+        .tic-tac-toe-cell { background-color: #4a5568; border-radius: 0.5rem; display: flex; justify-content: center; align-items: center; font-size: 3rem; font-weight: bold; cursor: pointer; transition: background-color 0.2s; }
+        .tic-tac-toe-cell:hover { background-color: #718096; }
+        .tic-tac-toe-cell.x { color: #48bb78; }
+        .tic-tac-toe-cell.o { color: #f56565; }
+    </style>
+</head>
+<body class="antialiased hidden">
+
+    <div id="game-container" class="text-center">
+        <h1 class="text-4xl font-bold mb-4">Tic Tac Toe</h1>
+        <p id="status-text" class="text-xl mb-4 text-gray-400">Player X's turn</p>
+        <div id="board" class="tic-tac-toe-board"></div>
+        <a href="../index.html" class="mt-8 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Back to Menu</a>
+    </div>
+
+    <!-- Result Modal -->
+    <div id="result-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg text-center shadow-2xl">
+            <h2 id="result-message" class="text-3xl font-bold mb-6"></h2>
+            <div class="flex justify-center space-x-4">
+                <button id="restart-game" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg">Play Again</button>
+                <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg">Main Menu</a>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const SUPABASE_URL = 'your_supabase_url_here'; // Replace with your Supabase URL
+        const SUPABASE_ANON_KEY = 'your_supabase_anon_key_here'; // Replace with your Supabase Anon Key
+
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // --- AUTHENTICATION CHECK ---
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (!session) {
+            window.location.href = '../login.html';
+        } else {
+            document.body.classList.remove('hidden');
+        }
+
+        const boardElement = document.getElementById('board');
+        const statusText = document.getElementById('status-text');
+        const resultModal = document.getElementById('result-modal');
+        const resultMessage = document.getElementById('result-message');
+        const restartGameBtn = document.getElementById('restart-game');
+
+        let boardState;
+        let currentPlayer;
+        let isGameActive;
+        const winningConditions = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
+            [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
+            [0, 4, 8], [2, 4, 6]             // Diagonals
+        ];
+
+        function startGame() {
+            boardState = Array(9).fill(null);
+            currentPlayer = 'X';
+            isGameActive = true;
+            statusText.textContent = `Player X's turn`;
+            resultModal.classList.add('hidden');
+            renderBoard();
+        }
+
+        function renderBoard() {
+            boardElement.innerHTML = '';
+            for (let i = 0; i < 9; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'tic-tac-toe-cell';
+                cell.dataset.index = i;
+                if (boardState[i]) {
+                    cell.textContent = boardState[i];
+                    cell.classList.add(boardState[i].toLowerCase());
+                }
+                cell.addEventListener('click', handleCellClick);
+                boardElement.appendChild(cell);
+            }
+        }
+
+        function handleCellClick(e) {
+            const clickedIndex = parseInt(e.target.dataset.index);
+            if (!isGameActive || boardState[clickedIndex] !== null) {
+                return;
+            }
+            boardState[clickedIndex] = currentPlayer;
+            renderBoard();
+            checkResult();
+        }
+
+        function checkResult() {
+            let roundWon = false;
+            for (let i = 0; i < winningConditions.length; i++) {
+                const [a, b, c] = winningConditions[i];
+                if (boardState[a] && boardState[a] === boardState[b] && boardState[a] === boardState[c]) {
+                    roundWon = true;
+                    break;
+                }
+            }
+
+            if (roundWon) {
+                resultMessage.innerHTML = `Player <span class="${currentPlayer.toLowerCase()}">${currentPlayer}</span> Wins!`;
+                resultModal.classList.remove('hidden');
+                isGameActive = false;
+                return;
+            }
+
+            if (!boardState.includes(null)) {
+                resultMessage.textContent = "It's a Draw!";
+                resultModal.classList.remove('hidden');
+                isGameActive = false;
+                return;
+            }
+
+            currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+            statusText.textContent = `Player ${currentPlayer}'s turn`;
+        }
+        
+        restartGameBtn.addEventListener('click', startGame);
+
+        // Initial game start
+        startGame();
+    </script>
+</body>
+</html>

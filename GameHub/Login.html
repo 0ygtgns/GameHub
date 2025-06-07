@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameHub - Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #1a202c; color: #e2e8f0; }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="flex items-center justify-center min-h-screen">
+        <div class="w-full max-w-md p-8 space-y-6 bg-gray-800 rounded-2xl shadow-2xl">
+            
+            <!-- Login View -->
+            <div id="login-view">
+                <h1 class="text-3xl font-bold text-center text-white"><i class="fas fa-gamepad mr-2 text-indigo-400"></i>GameHub</h1>
+                <p class="mt-2 text-center text-gray-400">Sign in to track your scores</p>
+                <form class="mt-8 space-y-6" id="login-form">
+                    <div class="rounded-md shadow-sm -space-y-px">
+                        <div>
+                            <input id="login-email" name="email" type="email" autocomplete="email" required class="relative block w-full px-3 py-2 text-gray-900 placeholder-gray-500 bg-gray-200 border border-gray-300 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Email address">
+                        </div>
+                        <div>
+                            <input id="login-password" name="password" type="password" autocomplete="current-password" required class="relative block w-full px-3 py-2 text-gray-900 placeholder-gray-500 bg-gray-200 border border-gray-300 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Password">
+                        </div>
+                    </div>
+                    <div>
+                        <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">Sign in</button>
+                    </div>
+                </form>
+                <p class="mt-4 text-center text-sm text-gray-400">No account? <a href="#" id="show-signup" class="font-medium text-indigo-400 hover:text-indigo-500">Create one</a></p>
+            </div>
+
+            <!-- Signup View -->
+            <div id="signup-view" class="hidden">
+                 <h1 class="text-3xl font-bold text-center text-white"><i class="fas fa-gamepad mr-2 text-indigo-400"></i>GameHub</h1>
+                <p class="mt-2 text-center text-gray-400">Create a new account</p>
+                <form class="mt-8 space-y-6" id="signup-form">
+                    <div class="rounded-md shadow-sm -space-y-px">
+                         <div>
+                            <input id="signup-email" name="email" type="email" autocomplete="email" required class="relative block w-full px-3 py-2 text-gray-900 placeholder-gray-500 bg-gray-200 border border-gray-300 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Email address">
+                        </div>
+                        <div>
+                            <input id="signup-password" name="password" type="password" autocomplete="new-password" required class="relative block w-full px-3 py-2 text-gray-900 placeholder-gray-500 bg-gray-200 border border-gray-300 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Password (min. 6 characters)">
+                        </div>
+                    </div>
+                    <div>
+                        <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">Sign up</button>
+                    </div>
+                </form>
+                <p class="mt-4 text-center text-sm text-gray-400">Already have an account? <a href="#" id="show-login" class="font-medium text-indigo-400 hover:text-indigo-500">Sign in</a></p>
+            </div>
+
+            <div id="message" class="hidden mt-4 text-center p-3 bg-red-800/50 text-red-200 rounded-md"></div>
+        </div>
+    </div>
+    <script type="module">
+        const SUPABASE_URL = "your supabase url here"; 
+        const SUPABASE_ANON_KEY = 'your supabase anon key here';
+
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const loginForm = document.getElementById('login-form');
+        const signupForm = document.getElementById('signup-form');
+        const showSignupBtn = document.getElementById('show-signup');
+        const showLoginBtn = document.getElementById('show-login');
+        const loginDiv = document.getElementById('login-view');
+        const signupDiv = document.getElementById('signup-view');
+        const messageDiv = document.getElementById('message');
+
+        // --- Auth State Observer ---
+        _supabase.auth.onAuthStateChange((event, session) => {
+            if (session) {
+                window.location.href = 'index.html';
+            }
+        });
+
+        showSignupBtn.addEventListener('click', (e) => { e.preventDefault(); loginDiv.classList.add('hidden'); signupDiv.classList.remove('hidden'); });
+        showLoginBtn.addEventListener('click', (e) => { e.preventDefault(); signupDiv.classList.add('hidden'); loginDiv.classList.remove('hidden'); });
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const { error } = await _supabase.auth.signInWithPassword({
+                email: loginForm.email.value,
+                password: loginForm.password.value,
+            });
+            if (error) {
+                messageDiv.textContent = error.message;
+                messageDiv.classList.remove('hidden');
+            }
+        });
+
+        signupForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const { error } = await _supabase.auth.signUp({
+                email: signupForm.email.value,
+                password: signupForm.password.value,
+            });
+            if (error) {
+                messageDiv.textContent = error.message;
+                messageDiv.classList.remove('hidden');
+            } else {
+                messageDiv.textContent = 'Success! Logging you in...';
+                messageDiv.classList.remove('hidden', 'bg-red-800/50', 'text-red-200');
+                messageDiv.classList.add('bg-green-800/50', 'text-green-200');
+            }
+        });
+    </script>
+</body>
+</html>

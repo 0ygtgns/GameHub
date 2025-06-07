@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameHub - Pong</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #1a202c; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; }
+        canvas { background-color: #000; border-radius: 0.5rem; }
+    </style>
+</head>
+<body class="antialiased hidden">
+
+    <div id="game-container" class="text-center">
+        <h1 class="text-4xl font-bold mb-2">Pong</h1>
+        <p class="text-lg text-gray-400 mb-4">Use the Up & Down Arrow Keys to move your paddle.</p>
+        
+        <canvas id="game-canvas" width="800" height="400"></canvas>
+
+        <div class="mt-8">
+            <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Back to Menu</a>
+        </div>
+    </div>
+    
+    <!-- Result Modal -->
+    <div id="result-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center">
+        <div class="bg-gray-800 p-8 rounded-lg text-center">
+            <h2 id="result-message" class="text-3xl font-bold mb-6"></h2>
+            <div class="flex justify-center space-x-4">
+                <button id="restart-game" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg">Play Again</button>
+                <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg">Main Menu</a>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const SUPABASE_URL = 'your_supabase_url_here'; // Replace with your Supabase URL
+        const SUPABASE_ANON_KEY = 'your_supabase_anon_key_here'; // Replace with your Supabase Anon Key
+
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // --- AUTHENTICATION CHECK ---
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (!session) {
+            window.location.href = '../login.html';
+        } else {
+            document.body.classList.remove('hidden');
+        }
+
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const resultModal = document.getElementById('result-modal');
+        const resultMessage = document.getElementById('result-message');
+        const restartGameBtn = document.getElementById('restart-game');
+
+        let ball, player, ai, game;
+
+        function initGame() {
+            ball = { x: canvas.width / 2, y: canvas.height / 2, radius: 10, speed: 7, velX: 5, velY: 5 };
+            player = { x: 10, y: (canvas.height - 100) / 2, width: 10, height: 100, score: 0, color: '#63b3ed' };
+            ai = { x: canvas.width - 20, y: (canvas.height - 100) / 2, width: 10, height: 100, score: 0, color: '#f56565' };
+            resultModal.classList.add('hidden');
+            game = setInterval(gameLoop, 1000/60);
+        }
+        
+        let upArrowPressed = false;
+        let downArrowPressed = false;
+        
+        document.addEventListener('keydown', e => {
+            if(e.key === "ArrowUp") upArrowPressed = true;
+            if(e.key === "ArrowDown") downArrowPressed = true;
+        });
+        document.addEventListener('keyup', e => {
+            if(e.key === "ArrowUp") upArrowPressed = false;
+            if(e.key === "ArrowDown") downArrowPressed = false;
+        });
+
+        function updatePlayerPosition() {
+            if(upArrowPressed && player.y > 0) {
+                player.y -= 8;
+            }
+            if(downArrowPressed && player.y < canvas.height - player.height) {
+                player.y += 8;
+            }
+        }
+        
+        function update() {
+            updatePlayerPosition();
+
+            ball.x += ball.velX;
+            ball.y += ball.velY;
+
+            if (ball.y + ball.radius > canvas.height || ball.y - ball.radius < 0) ball.velY = -ball.velY;
+            
+            let paddle = (ball.x < canvas.width / 2) ? player : ai;
+            if (collisionDetect(paddle, ball)) {
+                let collidePoint = ball.y - (paddle.y + paddle.height / 2);
+                collidePoint = collidePoint / (paddle.height / 2);
+                let angleRad = (Math.PI / 4) * collidePoint;
+                let direction = (ball.x < canvas.width / 2) ? 1 : -1;
+                ball.velX = direction * ball.speed * Math.cos(angleRad);
+                ball.velY = ball.speed * Math.sin(angleRad);
+                ball.speed += 0.2;
+            }
+
+            ai.y += (ball.y - (ai.y + ai.height / 2)) * 0.1;
+
+            if (ball.x - ball.radius < 0) {
+                ai.score++;
+                resetBall();
+            } else if (ball.x + ball.radius > canvas.width) {
+                player.score++;
+                resetBall();
+            }
+            
+            if(player.score === 5 || ai.score === 5){
+                clearInterval(game);
+                resultMessage.innerHTML = `${player.score === 5 ? 'You Win!' : 'AI Wins!'}<br>${player.score} - ${ai.score}`;
+                resultModal.classList.remove('hidden');
+            }
+        }
+
+        function collisionDetect(paddle, ball) {
+            paddle.top = paddle.y;
+            paddle.bottom = paddle.y + paddle.height;
+            paddle.left = paddle.x;
+            paddle.right = paddle.x + paddle.width;
+
+            ball.top = ball.y - ball.radius;
+            ball.bottom = ball.y + ball.radius;
+            ball.left = ball.x - ball.radius;
+            ball.right = ball.x + ball.radius;
+
+            return paddle.left < ball.right && paddle.top < ball.bottom && paddle.right > ball.left && paddle.bottom > ball.top;
+        }
+
+        function resetBall() {
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height / 2;
+            ball.speed = 7;
+            ball.velX = -ball.velX;
+        }
+
+        function render() {
+            ctx.fillStyle = "#1a202c";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.fillStyle = ai.color;
+            ctx.fillRect(ai.x, ai.y, ai.width, ai.height);
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI*2, false);
+            ctx.fill();
+            ctx.font = "75px Poppins";
+            ctx.fillText(player.score, canvas.width / 4, canvas.height / 5);
+            ctx.fillText(ai.score, 3 * canvas.width / 4, canvas.height / 5);
+        }
+
+        function gameLoop() {
+            update();
+            render();
+        }
+
+        restartGameBtn.addEventListener('click', initGame);
+        initGame();
+    </script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameHub - 2048</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #1a202c; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; }
+        .grid-2048 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; background-color: #4a5568; padding: 1rem; border-radius: 0.5rem;}
+        .cell-2048 { width: 100px; height: 100px; background-color: #718096; border-radius: 0.25rem; display: flex; justify-content: center; align-items: center; font-size: 2.5rem; font-weight: bold; }
+        [data-val="2"]{background-color:#eee4da;color:#776e65}[data-val="4"]{background-color:#ede0c8;color:#776e65}[data-val="8"]{background-color:#f2b179;color:#f9f6f2}[data-val="16"]{background-color:#f59563;color:#f9f6f2}[data-val="32"]{background-color:#f67c5f;color:#f9f6f2}[data-val="64"]{background-color:#f65e3b;color:#f9f6f2}[data-val="128"]{background-color:#edcf72;color:#f9f6f2}[data-val="256"]{background-color:#edcc61;color:#f9f6f2}[data-val="512"]{background-color:#edc850;color:#f9f6f2}[data-val="1024"]{background-color:#edc53f;color:#f9f6f2}[data-val="2048"]{background-color:#edc22e;color:#f9f6f2}
+    </style>
+</head>
+<body class="antialiased hidden">
+    <div id="game-container" class="text-center">
+        <h1 class="text-4xl font-bold mb-2">2048</h1>
+        <p class="text-lg text-gray-400 mb-4">Use Arrow Keys to merge tiles and reach 2048!</p>
+        <div class="text-2xl font-bold mb-4">Score: <span id="score">0</span></div>
+        <div id="grid" class="grid-2048"></div>
+        <div class="mt-8"><a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg">Back to Menu</a></div>
+    </div>
+    <div id="result-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg text-center shadow-2xl">
+            <h2 id="result-message" class="text-3xl font-bold mb-6"></h2>
+            <div class="flex justify-center space-x-4">
+                <button id="restart-game" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg">Play Again</button>
+                <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg">Main Menu</a>
+            </div>
+        </div>
+    </div>
+    <script type="module">
+        const SUPABASE_URL = 'your_supabase_url_here'; // Replace with your Supabase URL
+        const SUPABASE_ANON_KEY = 'your_supabase_anon_key_here'; // Replace with your Supabase Anon Key
+
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let currentUser = null;
+        
+        async function initializePage() {
+            const { data: { session } } = await _supabase.auth.getSession();
+            if (!session) { window.location.href = '../login.html'; } 
+            else { currentUser = session.user; document.body.classList.remove('hidden'); initGame(); }
+        }
+
+        const gridDisplay = document.getElementById('grid');
+        const scoreDisplay = document.getElementById('score');
+        const resultModal = document.getElementById('result-modal');
+        const resultMessage = document.getElementById('result-message');
+        const restartGameBtn = document.getElementById('restart-game');
+        let squares = [];
+        let score = 0;
+
+        function initGame() {
+            score = 0;
+            scoreDisplay.textContent = 0;
+            squares = Array(16).fill(0);
+            gridDisplay.innerHTML = '';
+            for (let i=0; i<16; i++) {
+                let square = document.createElement('div');
+                square.className = 'cell-2048';
+                gridDisplay.appendChild(square);
+            }
+            generate(); generate();
+            draw();
+            resultModal.classList.add('hidden');
+            document.addEventListener('keyup', control);
+        }
+
+        function draw() {
+            const cells = gridDisplay.children;
+            for(let i=0; i<16; i++) {
+                cells[i].textContent = squares[i] === 0 ? '' : squares[i];
+                cells[i].dataset.val = squares[i];
+            }
+        }
+        
+        function generate() {
+            let emptySquares = squares.map((val, i) => val === 0 ? i : -1).filter(i => i !== -1);
+            if (emptySquares.length > 0) {
+                let randIndex = emptySquares[Math.floor(Math.random() * emptySquares.length)];
+                squares[randIndex] = Math.random() < 0.9 ? 2 : 4;
+            }
+        }
+
+        function move(row) {
+            let filteredRow = row.filter(num => num);
+            let missing = 4 - filteredRow.length;
+            let zeros = Array(missing).fill(0);
+            return filteredRow.concat(zeros);
+        }
+        function combine(row) {
+            for (let i = 0; i < 3; i++) {
+                if (row[i] === row[i+1] && row[i] !== 0) {
+                    let combinedTotal = row[i] + row[i+1];
+                    row[i] = combinedTotal;
+                    row[i+1] = 0;
+                    score += combinedTotal;
+                    scoreDisplay.innerHTML = score;
+                }
+            }
+            return row;
+        }
+
+        function operate(key) {
+            let moved = false;
+            const original = [...squares];
+            for (let i=0; i<4; i++) {
+                let row = (key === 'ArrowUp' || key === 'ArrowDown') ? [squares[i], squares[i+4], squares[i+8], squares[i+12]] : [squares[i*4], squares[i*4+1], squares[i*4+2], squares[i*4+3]];
+                if (key === 'ArrowRight' || key === 'ArrowDown') row.reverse();
+                let newRow = move(combine(move(row)));
+                if (key === 'ArrowRight' || key === 'ArrowDown') newRow.reverse();
+                for (let j=0; j<4; j++) {
+                    if (key === 'ArrowUp' || key === 'ArrowDown') squares[j*4+i] = newRow[j];
+                    else squares[i*4+j] = newRow[j];
+                }
+            }
+            if (JSON.stringify(original) !== JSON.stringify(squares)) moved = true;
+            return moved;
+        }
+        
+        function control(e) {
+            let moved = false;
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                moved = operate(e.key);
+            }
+            if (moved) {
+                generate();
+                draw();
+                checkGameOver();
+            }
+        }
+
+        async function checkGameOver() {
+            let emptySquares = squares.includes(0);
+            let canCombine = false;
+            for(let i=0; i<15; i++) {
+                if(squares[i] === squares[i+1] && (i+1)%4 !== 0) canCombine = true;
+                if(i < 12 && squares[i] === squares[i+4]) canCombine = true;
+            }
+            if (!emptySquares && !canCombine) {
+                document.removeEventListener('keyup', control);
+                await saveScore('2048', score);
+                resultMessage.textContent = `Game Over! Score: ${score}`;
+                resultModal.classList.remove('hidden');
+            }
+        }
+        
+        async function saveScore(gameId, score) { /* ... same as breakout ... */ }
+        restartGameBtn.addEventListener('click', initGame);
+        initializePage();
+    </script>
+</body>
+</html>

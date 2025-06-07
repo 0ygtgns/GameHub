@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameHub - Flappy Bird</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #1a202c; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; }
+        canvas { background-color: #71c5cf; border-radius: 0.5rem; border: 2px solid #374151; }
+    </style>
+</head>
+<body class="antialiased hidden">
+
+    <div id="game-container" class="text-center">
+        <h1 class="text-4xl font-bold mb-2">Flappy Bird</h1>
+        <p class="text-lg text-gray-400 mb-4">Press SPACE or Click to Flap.</p>
+        
+        <canvas id="game-canvas" width="320" height="480"></canvas>
+
+        <div class="mt-8">
+            <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Back to Menu</a>
+        </div>
+    </div>
+    
+    <!-- Result Modal -->
+    <div id="result-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg text-center shadow-2xl">
+            <h2 id="result-message" class="text-3xl font-bold mb-6"></h2>
+            <div class="flex justify-center space-x-4">
+                <button id="restart-game" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg">Play Again</button>
+                <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg">Main Menu</a>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const SUPABASE_URL = 'your_supabase_url_here'; // Replace with your Supabase URL
+        const SUPABASE_ANON_KEY = 'your_supabase_anon_key_here'; // Replace with your Supabase Anon Key
+
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        let currentUser = null;
+
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const resultModal = document.getElementById('result-modal');
+        const resultMessage = document.getElementById('result-message');
+        const restartGameBtn = document.getElementById('restart-game');
+
+        let bird, pipes, score, velocity, frameCount, game;
+
+        async function initializePage() {
+            const { data: { session } } = await _supabase.auth.getSession();
+            if (!session) {
+                window.location.href = '../login.html';
+            } else {
+                currentUser = session.user;
+                document.body.classList.remove('hidden');
+                initGame();
+            }
+        }
+
+        function initGame() {
+            bird = { x: 50, y: 150, width: 34, height: 24 }; // Bird-like dimensions
+            pipes = [];
+            score = 0;
+            velocity = 0;
+            frameCount = 0;
+            resultModal.classList.add('hidden');
+            if(game) clearInterval(game);
+            game = setInterval(gameLoop, 1000 / 60);
+        }
+
+        const flap = () => velocity = -8;
+        
+        document.addEventListener('keydown', e => { if(e.code === 'Space') flap(); });
+        document.addEventListener('click', flap);
+
+        async function saveScore(gameId, newScore) {
+            if (!currentUser || newScore < 0) return; // Allow saving score of 0
+            const { data: existingScore } = await _supabase.from('scores').select('score').eq('user_id', currentUser.id).eq('game_id', gameId).single();
+            const currentHighScore = existingScore ? existingScore.score : -1;
+            if (newScore > currentHighScore) {
+                await _supabase.from('scores').upsert({ user_id: currentUser.id, game_id: gameId, score: newScore }, { onConflict: 'user_id,game_id' });
+            }
+        }
+
+        function endGame() {
+            clearInterval(game);
+            saveScore('flappy-bird', score);
+            resultMessage.innerHTML = `Game Over!<br>Final Score: ${score}`;
+            resultModal.classList.remove('hidden');
+        }
+
+        function gameLoop() {
+            velocity += 0.5;
+            bird.y += velocity;
+
+            if (bird.y + bird.height > canvas.height || bird.y < 0) {
+                endGame();
+                return;
+            }
+
+            ctx.fillStyle = '#71c5cf';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (frameCount % 90 === 0) {
+                const pipeY = Math.random() * (canvas.height - 220) + 60;
+                pipes.push({ x: canvas.width, y: pipeY });
+            }
+            frameCount++;
+
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                pipes[i].x -= 2;
+                
+                ctx.fillStyle = '#74bf2e';
+                // Top pipe
+                ctx.fillRect(pipes[i].x, 0, 52, pipes[i].y);
+                // Bottom pipe
+                ctx.fillRect(pipes[i].x, pipes[i].y + 120, 52, canvas.height);
+
+                if (bird.x < pipes[i].x + 52 && bird.x + bird.width > pipes[i].x && (bird.y < pipes[i].y || bird.y + bird.height > pipes[i].y + 120)) {
+                    endGame();
+                    return;
+                }
+
+                if (pipes[i].x + 52 < bird.x && !pipes[i].passed) {
+                    score++;
+                    pipes[i].passed = true;
+                }
+
+                if (pipes[i].x < -52) {
+                    pipes.splice(i, 1);
+                }
+            }
+
+            // Draw bird
+            ctx.fillStyle = '#f6e05e';
+            ctx.fillRect(bird.x, bird.y, bird.width, bird.height);
+            
+            // Draw score
+            ctx.fillStyle = 'white';
+            ctx.font = '35px Poppins';
+            ctx.fillText(score, canvas.width / 2, 50);
+        }
+        
+        restartGameBtn.addEventListener('click', initGame);
+        initializePage();
+    </script>
+</body>
+</html>

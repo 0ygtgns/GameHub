@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameHub - Breakout</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #1a202c; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; }
+        canvas { background-color: #000; border-radius: 0.5rem; border: 2px solid #374151; }
+    </style>
+</head>
+<body class="antialiased hidden">
+
+    <div id="game-container" class="text-center">
+        <h1 class="text-4xl font-bold mb-2">Breakout</h1>
+        <p class="text-lg text-gray-400 mb-4">Use Left & Right Arrows to move. Break all the bricks!</p>
+        <canvas id="game-canvas" width="480" height="500"></canvas>
+        <div class="mt-8">
+            <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Back to Menu</a>
+        </div>
+    </div>
+    
+    <div id="result-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg text-center shadow-2xl">
+            <h2 id="result-message" class="text-3xl font-bold mb-6"></h2>
+            <div class="flex justify-center space-x-4">
+                <button id="restart-game" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg">Play Again</button>
+                <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg">Main Menu</a>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const SUPABASE_URL = 'your_supabase_url_here'; // Replace with your Supabase URL
+        const SUPABASE_ANON_KEY = 'your_supabase_anon_key_here'; // Replace with your Supabase Anon Key
+
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let currentUser = null;
+        
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const resultModal = document.getElementById('result-modal');
+        const resultMessage = document.getElementById('result-message');
+        const restartGameBtn = document.getElementById('restart-game');
+
+        let ball, paddle, bricks, score, lives, game;
+        
+        async function initializePage() {
+            const { data: { session } } = await _supabase.auth.getSession();
+            if (!session) { window.location.href = '../login.html'; } 
+            else { currentUser = session.user; document.body.classList.remove('hidden'); initGame(); }
+        }
+
+        function initGame() {
+            score = 0;
+            lives = 3;
+            ball = { x: canvas.width / 2, y: canvas.height - 30, dx: 4, dy: -4, radius: 10 };
+            paddle = { height: 10, width: 100, x: (canvas.width - 100) / 2 };
+            bricks = [];
+            const brickRowCount = 5;
+            const brickColumnCount = 9;
+            const brickWidth = 40;
+            const brickHeight = 20;
+            const brickPadding = 10;
+            const brickOffsetTop = 30;
+            const brickOffsetLeft = 30;
+
+            for (let c = 0; c < brickColumnCount; c++) {
+                bricks[c] = [];
+                for (let r = 0; r < brickRowCount; r++) {
+                    bricks[c][r] = { x: 0, y: 0, status: 1 };
+                }
+            }
+
+            resultModal.classList.add('hidden');
+            if(game) clearInterval(game);
+            game = setInterval(draw, 1000/60);
+        }
+
+        let rightPressed = false;
+        let leftPressed = false;
+        document.addEventListener("keydown", e => {
+            if(e.key == "Right" || e.key == "ArrowRight") rightPressed = true;
+            else if(e.key == "Left" || e.key == "ArrowLeft") leftPressed = true;
+        }, false);
+        document.addEventListener("keyup", e => {
+            if(e.key == "Right" || e.key == "ArrowRight") rightPressed = false;
+            else if(e.key == "Left" || e.key == "ArrowLeft") leftPressed = false;
+        }, false);
+
+        function collisionDetection() {
+            for (let c = 0; c < bricks.length; c++) {
+                for (let r = 0; r < bricks[c].length; r++) {
+                    let b = bricks[c][r];
+                    if (b.status == 1) {
+                        if (ball.x > b.x && ball.x < b.x + 40 && ball.y > b.y && ball.y < b.y + 20) {
+                            ball.dy = -ball.dy;
+                            b.status = 0;
+                            score += 10;
+                            if (score == 45 * 10) {
+                                saveScore('breakout', lives * 100 + score);
+                                showResult("YOU WIN!", `Final Score: ${lives * 100 + score}`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function showResult(message, finalScoreText) {
+            clearInterval(game);
+            resultMessage.innerHTML = `${message}<br>${finalScoreText}`;
+            resultModal.classList.remove('hidden');
+        }
+
+        async function saveScore(gameId, newScore) {
+            if (!currentUser || newScore <= 0) return;
+            const { data } = await _supabase.from('scores').select('score').eq('user_id', currentUser.id).eq('game_id', gameId).single();
+            if (!data || newScore > data.score) {
+                await _supabase.from('scores').upsert({ user_id: currentUser.id, game_id: gameId, score: newScore }, { onConflict: 'user_id,game_id' });
+            }
+        }
+        
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Bricks
+            for (let c = 0; c < bricks.length; c++) {
+                for (let r = 0; r < bricks[c].length; r++) {
+                    if (bricks[c][r].status == 1) {
+                        let brickX = (c * (40 + 10)) + 30;
+                        let brickY = (r * (20 + 10)) + 30;
+                        bricks[c][r].x = brickX;
+                        bricks[c][r].y = brickY;
+                        ctx.fillStyle = `hsl(${(r * 360 / 5)}, 70%, 60%)`;
+                        ctx.fillRect(brickX, brickY, 40, 20);
+                    }
+                }
+            }
+            // Ball
+            ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2); ctx.fillStyle = "#fff"; ctx.fill(); ctx.closePath();
+            // Paddle
+            ctx.fillStyle = "#63b3ed"; ctx.fillRect(paddle.x, canvas.height - paddle.height, paddle.width, paddle.height);
+            // Score & Lives
+            ctx.font = "16px Poppins"; ctx.fillStyle = "#fff"; ctx.fillText("Score: " + score, 8, 20);
+            ctx.fillText("Lives: " + lives, canvas.width - 65, 20);
+
+            collisionDetection();
+
+            if (ball.x + ball.dx > canvas.width - ball.radius || ball.x + ball.dx < ball.radius) ball.dx = -ball.dx;
+            if (ball.y + ball.dy < ball.radius) ball.dy = -ball.dy;
+            else if (ball.y + ball.dy > canvas.height - ball.radius) {
+                if (ball.x > paddle.x && ball.x < paddle.x + paddle.width) {
+                    ball.dy = -ball.dy;
+                } else {
+                    lives--;
+                    if (!lives) {
+                        saveScore('breakout', score);
+                        showResult("GAME OVER", `Final Score: ${score}`);
+                    } else {
+                        ball.x = canvas.width / 2; ball.y = canvas.height - 30; ball.dx = 4; ball.dy = -4; paddle.x = (canvas.width - paddle.width) / 2;
+                    }
+                }
+            }
+
+            if (rightPressed && paddle.x < canvas.width - paddle.width) paddle.x += 7;
+            if (leftPressed && paddle.x > 0) paddle.x -= 7;
+
+            ball.x += ball.dx; ball.y += ball.dy;
+        }
+        
+        restartGameBtn.addEventListener("click", initGame);
+        initializePage();
+    </script>
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameHub - Connect Four</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #1a202c; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; }
+        .connect-four-board { display: grid; grid-template-columns: repeat(7, 50px); gap: 5px; background-color: #1e40af; padding: 10px; border-radius: 10px; }
+        .connect-four-column { display: flex; flex-direction: column-reverse; gap: 5px; }
+        .connect-four-cell { width: 50px; height: 50px; background-color: #1e293b; border-radius: 50%; cursor: pointer; transition: background-color 0.2s; }
+        .connect-four-cell.player1 { background-color: #ef4444; }
+        .connect-four-cell.player2 { background-color: #facc15; }
+    </style>
+</head>
+<body class="antialiased hidden">
+
+    <div id="game-container" class="text-center">
+        <h1 class="text-4xl font-bold mb-2">Connect Four</h1>
+        <p id="status-text" class="text-xl text-gray-400 mb-4">Red's Turn</p>
+        <div id="board" class="connect-four-board inline-grid"></div>
+        <div class="mt-8">
+            <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg">Back to Menu</a>
+        </div>
+    </div>
+    
+    <div id="result-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg text-center shadow-2xl">
+            <h2 id="result-message" class="text-3xl font-bold mb-6"></h2>
+            <div class="flex justify-center space-x-4">
+                <button id="restart-game" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg">Play Again</button>
+                <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg">Main Menu</a>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const SUPABASE_URL = 'your_supabase_url_here'; // Replace with your Supabase URL
+        const SUPABASE_ANON_KEY = 'your_supabase_anon_key_here'; // Replace with your Supabase Anon Key
+
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let currentUser = null;
+        
+        async function initializePage() {
+            const { data: { session } } = await _supabase.auth.getSession();
+            if (!session) { window.location.href = '../login.html'; } 
+            else { currentUser = session.user; document.body.classList.remove('hidden'); initGame(); }
+        }
+        
+        const boardElement = document.getElementById('board');
+        const statusText = document.getElementById('status-text');
+        const resultModal = document.getElementById('result-modal');
+        const resultMessage = document.getElementById('result-message');
+        const restartGameBtn = document.getElementById('restart-game');
+
+        const ROWS = 6;
+        const COLS = 7;
+        let boardState, currentPlayer, isGameActive;
+
+        function initGame() {
+            boardState = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+            currentPlayer = 1;
+            isGameActive = true;
+            resultModal.classList.add('hidden');
+            renderBoard();
+            updateStatus();
+        }
+
+        function renderBoard() {
+            boardElement.innerHTML = '';
+            for (let c = 0; c < COLS; c++) {
+                const column = document.createElement('div');
+                column.className = 'connect-four-column';
+                column.dataset.col = c;
+                for (let r = 0; r < ROWS; r++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'connect-four-cell';
+                    if (boardState[r][c] === 1) cell.classList.add('player1');
+                    if (boardState[r][c] === 2) cell.classList.add('player2');
+                    column.appendChild(cell);
+                }
+                column.addEventListener('click', () => handleColumnClick(c));
+                boardElement.appendChild(column);
+            }
+        }
+
+        function handleColumnClick(col) {
+            if (!isGameActive) return;
+            for (let r = 0; r < ROWS; r++) {
+                if (boardState[r][col] === 0) {
+                    boardState[r][col] = currentPlayer;
+                    if (checkWin(r, col)) {
+                        isGameActive = false;
+                        renderBoard();
+                        setTimeout(() => {
+                           resultMessage.innerHTML = `<span class="player${currentPlayer}">${currentPlayer === 1 ? 'Red' : 'Yellow'}</span> Wins!`;
+                           resultModal.classList.remove('hidden');
+                        }, 100);
+                    } else if (boardState.flat().every(cell => cell !== 0)) {
+                        isGameActive = false;
+                        resultMessage.textContent = "It's a Draw!";
+                        resultModal.classList.remove('hidden');
+                    } else {
+                        currentPlayer = currentPlayer === 1 ? 2 : 1;
+                        updateStatus();
+                        renderBoard();
+                    }
+                    return;
+                }
+            }
+        }
+        
+        function updateStatus() {
+            statusText.textContent = `${currentPlayer === 1 ? 'Red' : 'Yellow'}'s Turn`;
+            statusText.style.color = currentPlayer === 1 ? '#ef4444' : '#facc15';
+        }
+
+        function checkWin(r, c) {
+            const player = boardState[r][c];
+            const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
+            for (const [dr, dc] of directions) {
+                let count = 1;
+                for (let i = 1; i < 4; i++) {
+                    const newR = r + dr * i, newC = c + dc * i;
+                    if (newR >= 0 && newR < ROWS && newC >= 0 && newC < COLS && boardState[newR][newC] === player) count++;
+                    else break;
+                }
+                for (let i = 1; i < 4; i++) {
+                    const newR = r - dr * i, newC = c - dc * i;
+                    if (newR >= 0 && newR < ROWS && newC >= 0 && newC < COLS && boardState[newR][newC] === player) count++;
+                    else break;
+                }
+                if (count >= 4) return true;
+            }
+            return false;
+        }
+
+        restartGameBtn.addEventListener('click', initGame);
+        initializePage();
+    </script>
+</body>
+</html>

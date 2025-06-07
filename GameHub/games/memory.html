@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameHub - Memory Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #1a202c; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; }
+        .memory-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+        .memory-card { background-color: transparent; width: 100px; height: 100px; cursor: pointer; border-radius: 0.5rem; perspective: 1000px; }
+        .memory-card .card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; }
+        .memory-card.is-flipped .card-inner { transform: rotateY(180deg); }
+        .card-face { position: absolute; width: 100%; height: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden; display: flex; justify-content: center; align-items: center; font-size: 2.5rem; border-radius: 0.5rem; }
+        .card-front { background-color: #4a5568; }
+        .card-back { background-color: #63b3ed; transform: rotateY(180deg); } /* <-- THIS LINE WAS MISSING THE TRANSFORM */
+        .memory-card.matched .card-back { background-color: #48bb78; } /* Green for matched pairs */
+    </style>
+</head>
+<body class="antialiased">
+
+    <div id="loading-state" class="text-center">
+        <h1 class="text-3xl font-bold">Loading Game...</h1>
+    </div>
+
+    <div id="game-container" class="text-center hidden">
+        <h1 class="text-4xl font-bold mb-2">Memory Game</h1>
+        <p class="text-lg text-gray-400 mb-4">Match all pairs as fast as you can!</p>
+        <div id="timer" class="text-2xl font-bold mb-4">Time: 0s</div>
+        <div id="game-board" class="memory-grid mb-8"></div>
+        <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Back to Menu</a>
+    </div>
+
+    <!-- Result Modal -->
+    <div id="result-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg text-center shadow-2xl">
+            <h2 id="result-message" class="text-3xl font-bold mb-6"></h2>
+            <div class="flex justify-center space-x-4">
+                <button id="restart-game" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg">Play Again</button>
+                <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg">Main Menu</a>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const SUPABASE_URL = 'your_supabase_url_here'; // Replace with your Supabase URL
+        const SUPABASE_ANON_KEY = 'your_supabase_anon_key_here'; // Replace with your Supabase Anon Key
+
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        let currentUser = null;
+
+        const loadingState = document.getElementById('loading-state');
+        const gameContainer = document.getElementById('game-container');
+        const gameBoard = document.getElementById('game-board');
+        const timerElement = document.getElementById('timer');
+        const resultModal = document.getElementById('result-modal');
+        const resultMessage = document.getElementById('result-message');
+        const restartGameBtn = document.getElementById('restart-game');
+        
+        const icons = ['gem','plane','anchor','bolt','cube','leaf','bicycle','bomb'];
+        let cards, flippedCards, matchedPairs, lockBoard, timer, seconds;
+
+        async function initializePage() {
+            const { data: { session } } = await _supabase.auth.getSession();
+            if (!session) {
+                window.location.href = '../login.html';
+            } else {
+                currentUser = session.user;
+                loadingState.classList.add('hidden');
+                gameContainer.classList.remove('hidden');
+                initGame();
+            }
+        }
+
+        function initGame() {
+            gameBoard.innerHTML = '';
+            cards = [...icons, ...icons].sort(() => 0.5 - Math.random());
+            flippedCards = [];
+            matchedPairs = 0;
+            lockBoard = false;
+            seconds = 0;
+            timerElement.textContent = `Time: 0s`;
+            resultModal.classList.add('hidden');
+            
+            if (timer) clearInterval(timer);
+            timer = setInterval(() => {
+                seconds++;
+                timerElement.textContent = `Time: ${seconds}s`;
+            }, 1000);
+
+            createBoard();
+        }
+
+        function createBoard() {
+            cards.forEach(icon => {
+                const card = document.createElement('div');
+                card.className = 'memory-card';
+                card.dataset.icon = icon;
+                card.innerHTML = `<div class="card-inner"><div class="card-face card-front"></div><div class="card-face card-back"><i class="fas fa-${icon}"></i></div></div>`;
+                card.addEventListener('click', () => flipCard(card));
+                gameBoard.appendChild(card);
+            });
+        }
+
+        function flipCard(card) {
+            if (lockBoard || card.classList.contains('is-flipped')) return;
+            
+            card.classList.add('is-flipped');
+            flippedCards.push(card);
+
+            if (flippedCards.length === 2) {
+                lockBoard = true;
+                checkForMatch();
+            }
+        }
+
+        function checkForMatch() {
+            const [card1, card2] = flippedCards;
+            if (card1.dataset.icon === card2.dataset.icon) {
+                disableCards();
+            } else {
+                unflipCards();
+            }
+        }
+
+        function disableCards() {
+            flippedCards.forEach(card => {
+                card.classList.add('matched');
+            });
+            matchedPairs++;
+            resetBoard();
+            if (matchedPairs === icons.length) {
+                clearInterval(timer);
+                const score = Math.max(10, 1000 - (seconds * 10));
+                saveScore('memory', score);
+                resultMessage.innerHTML = `You Win!<br>Score: ${score}`;
+                resultModal.classList.remove('hidden');
+            } else {
+                lockBoard = false;
+            }
+        }
+
+        function unflipCards() {
+            setTimeout(() => {
+                flippedCards.forEach(card => card.classList.remove('is-flipped'));
+                resetBoard();
+            }, 1000);
+        }
+
+        function resetBoard() {
+            flippedCards = [];
+            lockBoard = false;
+        }
+
+        async function saveScore(gameId, newScore) {
+            if (!currentUser || newScore <= 0) return;
+            const { data: existingScore } = await _supabase.from('scores').select('score').eq('user_id', currentUser.id).eq('game_id', gameId).single();
+            const currentHighScore = existingScore ? existingScore.score : -1;
+            if (newScore > currentHighScore) {
+                await _supabase.from('scores').upsert({ user_id: currentUser.id, game_id: gameId, score: newScore }, { onConflict: 'user_id,game_id' });
+            }
+        }
+        
+        restartGameBtn.addEventListener('click', initGame);
+        initializePage();
+
+    </script>
+</body>
+</html>

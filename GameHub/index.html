@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameHub - Main Menu</title>
+    <!-- Link to the stylesheet -->
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Supabase Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Link to the JavaScript file -->
+    <script type="module" src="index.js"></script>
+</head>
+<body>
+
+    <!-- Loading State -->
+    <div id="loading-state" class="loading-overlay">
+        <h1>Loading GameHub...</h1>
+    </div>
+
+    <!-- Main App Content (hidden by default) -->
+    <div id="app" class="app-container hidden">
+        <header class="main-header">
+            <div class="header-container">
+                <h1 class="header-title"><i class="fas fa-gamepad"></i>GameHub</h1>
+                <div class="header-actions">
+                    <span id="user-email"></span>
+                    <button id="leaderboard-btn" class="header-btn leaderboard-btn">
+                        <i class="fas fa-trophy"></i>Leaderboards
+                    </button>
+                    <button id="logout-btn" class="header-btn logout-btn">Logout</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <h2 class="main-title">Choose a Game</h2>
+            <div id="game-grid"></div>
+        </main>
+    </div>
+
+    <!-- Leaderboard Modal -->
+    <div id="leaderboard-modal" class="modal-backdrop hidden">
+        <div class="leaderboard-container">
+            <div class="modal-header">
+                <h2><i class="fas fa-trophy"></i>Leaderboards</h2>
+                <button id="close-leaderboard-modal">&times;</button>
+            </div>
+            <select id="leaderboard-game-select"></select>
+            <div id="leaderboard-list"></div>
+        </div>
+    </div>
+
+</body>
+</html>

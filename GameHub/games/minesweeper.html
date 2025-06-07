@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameHub - Minesweeper</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #1a202c; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; }
+        .minesweeper-grid { display: grid; grid-template-columns: repeat(10, 35px); gap: 2px; }
+        .mine-cell { width: 35px; height: 35px; background-color: #4a5568; display: flex; justify-content: center; align-items: center; font-weight: bold; cursor: pointer; border-radius: 4px; transition: background-color 0.2s; }
+        .mine-cell:hover { background-color: #718096; }
+        .mine-cell.revealed { background-color: #2d3748; cursor: default; }
+        .mine-cell.flagged { font-size: 1rem; color: #f87171; }
+        .mine-cell.mine { background-color: #ef4444; }
+    </style>
+</head>
+<body class="antialiased hidden">
+    <div id="game-container" class="text-center">
+        <h1 class="text-4xl font-bold mb-2">Minesweeper</h1>
+        <p class="text-lg text-gray-400 mb-4">Left-click to reveal, Right-click to flag.</p>
+        <div id="info-bar" class="text-xl font-bold mb-4 flex justify-center space-x-8">
+            <span><i class="fas fa-bomb mr-2"></i><span id="mines-left">10</span></span>
+            <span><i class="fas fa-clock mr-2"></i><span id="timer">0</span>s</span>
+        </div>
+        <div id="grid" class="minesweeper-grid"></div>
+        <div class="mt-8">
+            <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg">Back to Menu</a>
+        </div>
+    </div>
+    <div id="result-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg text-center shadow-2xl">
+            <h2 id="result-message" class="text-3xl font-bold mb-6"></h2>
+            <div class="flex justify-center space-x-4">
+                <button id="restart-game" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg">Play Again</button>
+                <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg">Main Menu</a>
+            </div>
+        </div>
+    </div>
+    <script type="module">
+        const SUPABASE_URL = 'your_supabase_url_here'; // Replace with your Supabase URL
+        const SUPABASE_ANON_KEY = 'your_supabase_anon_key_here'; // Replace with your Supabase Anon Key
+
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let currentUser = null;
+        
+        async function initializePage() {
+            const { data: { session } } = await _supabase.auth.getSession();
+            if (!session) { window.location.href = '../login.html'; } 
+            else { currentUser = session.user; document.body.classList.remove('hidden'); initGame(); }
+        }
+
+        const grid = document.getElementById('grid');
+        const minesLeftText = document.getElementById('mines-left');
+        const timerText = document.getElementById('timer');
+        const resultModal = document.getElementById('result-modal');
+        const resultMessage = document.getElementById('result-message');
+        const restartGameBtn = document.getElementById('restart-game');
+
+        const GRID_SIZE = 10, NUM_MINES = 10;
+        let board, isGameOver, minesLeft, timer, seconds;
+
+        function initGame() {
+            isGameOver = false;
+            minesLeft = NUM_MINES;
+            seconds = 0;
+            if (timer) clearInterval(timer);
+            timerText.textContent = '0';
+            minesLeftText.textContent = NUM_MINES;
+            resultModal.classList.add('hidden');
+            createBoard();
+        }
+
+        function createBoard() {
+            grid.innerHTML = '';
+            board = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill({ mine: false, revealed: false, flagged: false, count: 0 }));
+            
+            // Place mines
+            let minesPlaced = 0;
+            while(minesPlaced < NUM_MINES) {
+                const r = Math.floor(Math.random() * GRID_SIZE);
+                const c = Math.floor(Math.random() * GRID_SIZE);
+                if (!board[r][c].mine) {
+                    board[r][c] = {...board[r][c], mine: true};
+                    minesPlaced++;
+                }
+            }
+
+            // Calculate counts
+            for (let r=0; r<GRID_SIZE; r++) for (let c=0; c<GRID_SIZE; c++) {
+                if(board[r][c].mine) continue;
+                let count = 0;
+                for (let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++) {
+                    if (r+dr>=0 && r+dr<GRID_SIZE && c+dc>=0 && c+dc<GRID_SIZE && board[r+dr][c+dc].mine) count++;
+                }
+                board[r][c] = {...board[r][c], count: count};
+            }
+            renderBoard();
+        }
+        
+        function renderBoard() {
+            grid.innerHTML = '';
+             for (let r=0; r<GRID_SIZE; r++) for (let c=0; c<GRID_SIZE; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'mine-cell';
+                cell.dataset.r = r; cell.dataset.c = c;
+                if(board[r][c].revealed) {
+                    cell.classList.add('revealed');
+                    if(board[r][c].mine) cell.innerHTML = '<i class="fas fa-bomb"></i>';
+                    else if(board[r][c].count > 0) cell.textContent = board[r][c].count;
+                } else if(board[r][c].flagged) {
+                    cell.classList.add('flagged');
+                    cell.innerHTML = '<i class="fas fa-flag"></i>';
+                }
+                cell.addEventListener('click', () => handleClick(r, c));
+                cell.addEventListener('contextmenu', (e) => { e.preventDefault(); handleRightClick(r,c); });
+                grid.appendChild(cell);
+            }
+        }
+        
+        function handleClick(r, c) {
+            if (isGameOver || board[r][c].revealed || board[r][c].flagged) return;
+            if (seconds === 0) timer = setInterval(() => timerText.textContent = ++seconds, 1000);
+            
+            if(board[r][c].mine) {
+                isGameOver = true;
+                clearInterval(timer);
+                board.forEach((row, rIdx) => row.forEach((cell, cIdx) => { if(cell.mine) board[rIdx][cIdx] = {...cell, revealed: true}; }));
+                renderBoard();
+                resultMessage.textContent = "Game Over!";
+                resultModal.classList.remove('hidden');
+                return;
+            }
+            
+            reveal(r,c);
+            renderBoard();
+            checkWin();
+        }
+        
+        function handleRightClick(r,c) {
+            if (isGameOver || board[r][c].revealed) return;
+            board[r][c] = {...board[r][c], flagged: !board[r][c].flagged};
+            minesLeft += board[r][c].flagged ? -1 : 1;
+            minesLeftText.textContent = minesLeft;
+            renderBoard();
+        }
+
+        function reveal(r, c) {
+            if (r<0||r>=GRID_SIZE||c<0||c>=GRID_SIZE||board[r][c].revealed||board[r][c].flagged) return;
+            board[r][c] = {...board[r][c], revealed: true};
+            if(board[r][c].count === 0) {
+                for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++) reveal(r+dr, c+dc);
+            }
+        }
+
+        async function checkWin() {
+            const revealedCount = board.flat().filter(c => c.revealed).length;
+            if(revealedCount === GRID_SIZE * GRID_SIZE - NUM_MINES) {
+                isGameOver = true;
+                clearInterval(timer);
+                await saveScore('minesweeper', 1);
+                resultMessage.textContent = `You Win! Time: ${seconds}s`;
+                resultModal.classList.remove('hidden');
+            }
+        }
+        async function saveScore(gameId, score) { /* ... same as hangman ... */ }
+        restartGameBtn.addEventListener('click', initGame);
+        initializePage();
+    </script>
+</body>
+</html>

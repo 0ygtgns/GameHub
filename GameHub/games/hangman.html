@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameHub - Hangman</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #1a202c; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; }
+        .hangman-word { display: flex; gap: 0.75rem; justify-content: center; margin: 2rem 0; }
+        .letter-placeholder { width: 40px; height: 50px; border-bottom: 4px solid #4a5568; text-align: center; font-size: 2.5rem; font-weight: 600; text-transform: uppercase; }
+        .keyboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(45px, 1fr)); gap: 0.5rem; width: 100%; max-width: 600px; }
+        .key { background-color: #4a5568; border: none; padding: 1rem 0.5rem; border-radius: 0.375rem; cursor: pointer; transition: background-color 0.2s; font-weight: 600; }
+        .key:disabled { background-color: #2d3748; color: #718096; cursor: not-allowed; }
+        .key:hover:not(:disabled) { background-color: #718096; }
+    </style>
+</head>
+<body class="antialiased hidden">
+
+    <div id="game-container" class="text-center">
+        <h1 class="text-4xl font-bold mb-2">Hangman</h1>
+        <p class="text-lg text-gray-400 mb-4">Guess the word before it's too late!</p>
+        <div class="text-xl font-bold mb-4">Wrong Guesses: <span id="wrong-guesses">0</span>/6</div>
+        <div id="word-display" class="hangman-word"></div>
+        <div id="keyboard" class="keyboard"></div>
+        <div class="mt-8">
+            <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg">Back to Menu</a>
+        </div>
+    </div>
+    
+    <div id="result-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg text-center shadow-2xl">
+            <h2 id="result-message" class="text-3xl font-bold mb-6"></h2>
+            <div class="flex justify-center space-x-4">
+                <button id="restart-game" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg">Play Again</button>
+                <a href="../index.html" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg">Main Menu</a>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const SUPABASE_URL = 'your_supabase_url_here'; // Replace with your Supabase URL
+        const SUPABASE_ANON_KEY = 'your_supabase_anon_key_here'; // Replace with your Supabase Anon Key
+
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let currentUser = null;
+        
+        async function initializePage() {
+            const { data: { session } } = await _supabase.auth.getSession();
+            if (!session) { window.location.href = '../login.html'; } 
+            else { currentUser = session.user; document.body.classList.remove('hidden'); initGame(); }
+        }
+
+        const words = ['javascript', 'tailwind', 'developer', 'interface', 'component', 'supabase', 'gamehub'];
+        let wordToGuess, guessedLetters, wrongGuesses;
+        
+        const wordDisplay = document.getElementById('word-display');
+        const keyboardDiv = document.getElementById('keyboard');
+        const wrongGuessesSpan = document.getElementById('wrong-guesses');
+        const resultModal = document.getElementById('result-modal');
+        const resultMessage = document.getElementById('result-message');
+        const restartGameBtn = document.getElementById('restart-game');
+
+        function initGame() {
+            wordToGuess = words[Math.floor(Math.random() * words.length)];
+            guessedLetters = [];
+            wrongGuesses = 0;
+            resultModal.classList.add('hidden');
+            renderWord();
+            renderKeyboard();
+            updateWrongGuesses();
+        }
+
+        function renderWord() {
+            wordDisplay.innerHTML = wordToGuess
+                .split('')
+                .map(letter => `<div class="letter-placeholder">${guessedLetters.includes(letter) ? letter : ''}</div>`)
+                .join('');
+        }
+
+        function renderKeyboard() {
+            keyboardDiv.innerHTML = 'abcdefghijklmnopqrstuvwxyz'
+                .split('')
+                .map(letter => `<button class="key" data-key="${letter}">${letter.toUpperCase()}</button>`)
+                .join('');
+        }
+
+        function updateWrongGuesses() {
+            wrongGuessesSpan.textContent = `${wrongGuesses}/6`;
+        }
+
+        function handleGuess(e) {
+            if (e.target.tagName !== 'BUTTON') return;
+            const letter = e.target.dataset.key;
+            e.target.disabled = true;
+
+            if (guessedLetters.includes(letter)) return;
+            guessedLetters.push(letter);
+
+            if (wordToGuess.includes(letter)) {
+                renderWord();
+                checkWin();
+            } else {
+                wrongGuesses++;
+                updateWrongGuesses();
+                checkLoss();
+            }
+        }
+
+        function checkWin() {
+            if (wordToGuess.split('').every(letter => guessedLetters.includes(letter))) {
+                saveScore('hangman', 1);
+                resultMessage.innerHTML = `You Win!<br>The word was: <strong>${wordToGuess.toUpperCase()}</strong>`;
+                resultModal.classList.remove('hidden');
+            }
+        }
+
+        function checkLoss() {
+            if (wrongGuesses >= 6) {
+                resultMessage.innerHTML = `You Lose!<br>The word was: <strong>${wordToGuess.toUpperCase()}</strong>`;
+                resultModal.classList.remove('hidden');
+            }
+        }
+
+        async function saveScore(gameId, score) {
+            if (!currentUser) return;
+            const { data } = await _supabase.from('scores').select('score').eq('user_id', currentUser.id).eq('game_id', gameId).single();
+            const newTotalScore = (data ? data.score : 0) + score;
+            await _supabase.from('scores').upsert({ user_id: currentUser.id, game_id: gameId, score: newTotalScore }, { onConflict: 'user_id,game_id' });
+        }
+
+        keyboardDiv.addEventListener('click', handleGuess);
+        restartGameBtn.addEventListener('click', initGame);
+        initializePage();
+    </script>
+</body>
+</html>

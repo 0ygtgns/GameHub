@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameHub - Rock Paper Scissors</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #1a202c; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; }
+        .rps-options button { font-size: 5rem; background: none; border: none; color: #e2e8f0; cursor: pointer; transition: transform 0.2s; margin: 0 1rem; }
+        .rps-options button:hover { transform: scale(1.2); }
+    </style>
+</head>
+<body class="antialiased">
+    <!-- Loading State -->
+    <div id="loading-state" class="text-center">
+        <h1 class="text-3xl font-bold">Loading Game...</h1>
+    </div>
+
+    <!-- Game Content (hidden by default) -->
+    <div id="game-container" class="text-center hidden">
+        <h1 class="text-4xl font-bold mb-4">Rock Paper Scissors</h1>
+        <p class="text-center text-xl mb-8">Choose your weapon!</p>
+        <div id="options-area" class="flex justify-center space-x-8 rps-options">
+            <button data-choice="rock"><i class="fas fa-hand-rock"></i></button>
+            <button data-choice="paper"><i class="fas fa-hand-paper"></i></button>
+            <button data-choice="scissors"><i class="fas fa-hand-scissors"></i></button>
+        </div>
+        <div id="result-area" class="text-center mt-12 text-2xl font-semibold h-24"></div>
+        <a href="../index.html" class="mt-8 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Back to Menu</a>
+    </div>
+
+    <script type="module">
+        const SUPABASE_URL = 'your_supabase_url_here'; // Replace with your Supabase URL
+        const SUPABASE_ANON_KEY = 'your_supabase_anon_key_here'; // Replace with your Supabase Anon Key
+
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const loadingState = document.getElementById('loading-state');
+        const gameContainer = document.getElementById('game-container');
+
+        // --- AUTHENTICATION CHECK ---
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (!session) {
+            window.location.href = '../login.html';
+        } else {
+            loadingState.classList.add('hidden');
+            gameContainer.classList.remove('hidden');
+        }
+
+        const optionsArea = document.getElementById('options-area');
+        const resultArea = document.getElementById('result-area');
+        const options = ['rock', 'paper', 'scissors'];
+
+        optionsArea.querySelectorAll('button').forEach(button => {
+            button.addEventListener('click', () => {
+                const playerChoice = button.dataset.choice;
+                const computerChoice = options[Math.floor(Math.random() * 3)];
+                const result = getResult(playerChoice, computerChoice);
+                
+                resultArea.innerHTML = `
+                    <span>You chose <strong>${playerChoice}</strong>. AI chose <strong>${computerChoice}</strong>.</span>
+                    <br>
+                    <span class="mt-4 block text-3xl font-bold">${result}</span>
+                `;
+            });
+        });
+
+        function getResult(player, computer){
+            if(player === computer) return "It's a Draw!";
+            if((player === 'rock' && computer === 'scissors') || 
+               (player === 'paper' && computer === 'rock') ||
+               (player === 'scissors' && computer === 'paper')) {
+                return "You Win!";
+            }
+            return "You Lose!";
+        }
+    </script>
+</body>
+</html>
